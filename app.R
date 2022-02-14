@@ -114,9 +114,18 @@ server <- function(input, output) {
           #data.dat[which.max(data.dat$RECORD == "0") : nrow(data.dat), ]
 
         #this code removes first 2 rows (indexes)
-        merged_data[[i]] <- data.dat[-c(1:2),]
+        # comment out for now while playing
+      #  merged_data[[i]] <- data.dat[-c(1:2),]
+        
+        #if(data.dat$TIMESTAMP[1] == 'TS') {
+          
        
-      }
+        merged_data[[i]] <- data.dat[-c(1:2),]
+        # }
+        # else {
+        #   merged_data[[i]] <- data.dat
+        # }
+       }
       # browser()
       #data.bound <- do.call(bind_rows, merged_data) #might not need do.call
       data.bound <- bind_rows(merged_data)
@@ -149,6 +158,8 @@ server <- function(input, output) {
     data.bound[is.na(data.bound)] <- 0
     
     data.bound %>%
+      #group_by(TIMESTAMP) %>% 
+      arrange(desc(TIMESTAMP)) %>% 
       mutate(across(where(is.character), as.numeric)) %>%
       
      # mutate_all(~replace(., is.na(.), 0)) %>% 
