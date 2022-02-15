@@ -54,7 +54,20 @@ ui <- bootstrapPage(theme = shinytheme("sandstone"),
                            "text/comma-separated-values,text/plain",
                            ".csv", ".dat")),
       # Horizontal line ----
-      tags$hr()
+      tags$hr(),
+      
+      numericInput(inputId = "dLower",
+                   label = "Lower Displacement Digit 0",
+                   # value = 75.5806),
+                   value = 5295.223),
+      numericInput(inputId = "dUpper",
+                   label = "Upper Displacement Digit 0",
+                   # value = 46.1436),
+                   value = 4213.2263),
+      numericInput(inputId = "dControl",
+                   label = "Control Displacement Digit 0",
+                   # value = 49.37926)
+                   value = 4234.015)
       
       ), # sidebar panel
       
@@ -156,27 +169,45 @@ server <- function(input, output) {
     }
     data.bound$TIMESTAMP <- as.POSIXct(data.bound$TIMESTAMP)
     data.bound[is.na(data.bound)] <- 0
+    lower <- (input$dLower -2631) * 0.02828 + (22.76 - 22.8) * ##TT_Lower = 22.76
+      (((input$dLower * 0.000384) + (-0.3482)) * 0.02828)
+    upper <- (input$dUpper -2584) * 0.02828 + (28.37 - 22.8) * #TT_Upper = 28.37
+      (((input$dUpper * 0.000384) + (-0.3482)) * 0.02828)
+    control <- (input$dControl -2520) * 0.02869 + (28.37 - 22.8) * #TT_Upper = 28.37
+      (((input$dControl * 0.000384) + (-0.3482)) * 0.02869)
+    poly.lower <- -((0.000000077403*(input$dLower^2))+(0.02746*input$dLower))
+    poly.upper <- -((0.000000088762*(input$dUpper^2))+(0.02727*input$dUpper))
+    poly.control <- -((0.00000010095*(input$dControl^2))+(0.02765*input$dControl))
     
     data.bound %>%
       #group_by(TIMESTAMP) %>% 
-      arrange(desc(TIMESTAMP)) %>% 
+     # arrange(desc(TIMESTAMP)) %>%
+      arrange(TIMESTAMP) %>%
       mutate(across(where(is.character), as.numeric)) %>%
       
      # mutate_all(~replace(., is.na(.), 0)) %>% 
       #mutate(across(where(is.na), 0)) %>%
-      mutate(raT.24 = rollapply(T109_C, 96, mean, na.rm = T, align = 'right', partial=TRUE, fill = 0)) %>%
+      mutate(raT.24 = rollapply(T109_C, 96, mean, na.rm = T, align = 'right', partial=TRUE, fill = NA)) %>%
       mutate(disp.lower = (Digits_Lower -2631) * 0.02828 + (TT_Lower - 22.8) *
                (((Digits_Lower * 0.000384) + (-0.3482)) * 0.02828)) %>%
-      mutate(norm.dispL = disp.lower- disp.lower[1]) %>%
-      mutate(raL.24 = rollapply(norm.dispL, 96, mean, na.rm = T,align = 'right', partial=TRUE, fill = 0)) %>%
+      mutate(norm.dispL = disp.lower- lower) %>%
+      mutate(raL.24 = rollapply(norm.dispL, 96, mean, na.rm = T,align = 'right', partial=TRUE, fill = NA)) %>%
       mutate(disp.upper = (Digits_Upper -2584) * 0.02828 + (TT_Upper - 22.8) *
                (((Digits_Upper * 0.000384) + (-0.3482)) * 0.02828)) %>%
-      mutate(norm.dispU = disp.upper- disp.upper[1]) %>%
-      mutate(raU.24 = rollapply(norm.dispU, 96, mean, na.rm = T, align = 'right', partial=TRUE, fill = 0)) %>%
-      mutate(disp.control = (Digits_CTRL -2520) * 0.02869 + (TT_CTRL - 22.8) *
+      mutate(norm.dispU = disp.upper- upper) %>%
+      mutate(raU.24 = rollapply(norm.dispU, 96, mean, na.rm = T, align = 'right', partial=TRUE, fill = NA)) %>%
+      mutate(disp.control = (Digits_CTRL -2520) * 0.02869 + (TT_Upper - 22.8) *
                (((Digits_CTRL * 0.000384) + (-0.3482)) * 0.02869)) %>%
-      mutate(norm.dispC = disp.control- disp.control[1]) %>%
-      mutate(raC.24 = rollapply(norm.dispC, 96, mean, na.rm = T, align = 'right', partial=TRUE, fill = 0)) 
+      mutate(norm.dispC = disp.control- control) %>%
+      mutate(raC.24 = rollapply(norm.dispC, 96, mean, na.rm = T, align = 'right', partial=TRUE, fill = NA)) %>% 
+      mutate(poly.noTL = (0.000000077403*(Digits_Lower^2))+(0.02746*Digits_Lower)+poly.lower) %>% 
+      mutate(raL.noT = rollapply(poly.noTL, 96, mean, na.rm = T,align = 'right', partial=TRUE, fill = NA)) %>%
+      mutate(poly.noTU = (0.000000088762*(Digits_Upper^2))+(0.02727*Digits_Upper)+poly.upper) %>% 
+      mutate(raU.noT = rollapply(poly.noTU, 96, mean, na.rm = T,align = 'right', partial=TRUE, fill = NA)) %>%
+      mutate(poly.noTC = (0.00000010095*(Digits_CTRL^2))+(0.02765*Digits_CTRL)+poly.control) %>% 
+      mutate(raC.noT = rollapply(poly.noTC, 96, mean, na.rm = T,align = 'right', partial=TRUE, fill = NA)) 
+  
+      
     
     
     #write function to remove NaN values 
@@ -191,9 +222,19 @@ server <- function(input, output) {
 
   observe(print(str(getData())))
   
+  date.character <- reactive ({
+    #use validate and need to suppress warning messages
+    #when no input file
+    validate(
+      need(input$file1 != "", "Please upload a file")
+    )
+    getData() %>% 
+      mutate_if(is.POSIXct, as.character)
+     })
+  
   output$contents <- DT::renderDT(
     
-       getData(),
+      date.character(),
     filter = 'top'
     
   )
@@ -234,6 +275,13 @@ server <- function(input, output) {
             mode = "markers", marker = list(color = "#E7B800"), name = "Upper Displacement") %>%
   add_trace(x = ~TIMESTAMP, y = ~raC.24, type = "scatter", 
             mode = "markers", marker = list(color = '#FF0033'), name = "Control") %>%
+  add_trace(x = ~TIMESTAMP, y = ~raL.noT,
+            type = "scatter", mode = "markers", marker = list(color = '#00FF00'),
+            name = "Lower Displacement No Temp", textposition = "top center") %>%
+  add_trace(x = ~TIMESTAMP, y = ~raU.noT, type = "scatter", 
+            mode = "markers", marker = list(color = "#E7B800"), name = "Upper Displacement No Temp") %>%
+  add_trace(x = ~TIMESTAMP, y = ~raC.noT, type = "scatter", 
+            mode = "markers", marker = list(color = '#FF0033'), name = "Control No Temp") %>%
   layout(
         legend = list(orientation = 'v'),
         yaxis2 = list(side = "right", title = "Temperature (deg C)"),
