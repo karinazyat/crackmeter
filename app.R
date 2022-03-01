@@ -334,6 +334,10 @@ server <- function(input, output, session) {
       #browser()
       
       getData <- getData()
+      date.character <- date.character()
+      
+      date.POSIX <- date.character %>% 
+        mutate_if(is.character, as.POSIXct)
       
       # getData$TIMESTAMP <- as.POSIXct(getData$TIMESTAMP)
       
@@ -353,7 +357,7 @@ server <- function(input, output, session) {
       #    mutate(norm.dispC = disp.control- disp.control[1]) %>%
       #    mutate(raC.24 = rollapply(norm.dispC, 96, mean, align = 'right', fill = 0)) %>%
       
-      plot_ly(getData) %>% 
+      plot_ly(date.POSIX) %>% 
         add_trace(x = ~TIMESTAMP, y = ~raT.24, type = "scatter", 
                   mode = "markers", marker = list(color = "#00AFBB"), yaxis = "y2", name = "Temperature") %>%
         add_trace(x = ~TIMESTAMP, y = ~raL.24,
