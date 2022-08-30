@@ -76,6 +76,16 @@ ui <- bootstrapPage(theme = shinytheme("sandstone"),
                                             
                                             
                                             conditionalPanel(condition = "output.fileUploaded == true",
+                                                             pickerInput(inputId = "tz",
+                                                                         label = "Local Time Zone", 
+                                                                         choices = c("US/Mountain", "US/Central", "US/Hawaii", "US/Pacific", "US/Alaska", "US/Eastern"), 
+                                                                         selected = c("US/Mountain"))),
+                                            conditionalPanel(condition = "output.fileUploaded == true",
+                                                             pickerInput(inputId = "temp",
+                                                                         label = "Select Temperature Column", 
+                                                                         choices = c("T109_C", "PTemp_C"), 
+                                                                         selected = c("T109_C"))),
+                                            conditionalPanel(condition = "output.fileUploaded == true",
                                                              daterangepicker("dRange", label = "Select Date Range",
                                                                              options = daterangepickerOptions(
                                                                                showDropdowns = T,
@@ -128,16 +138,33 @@ server <- function(input, output, session) {
       return(NULL)
     }else {
       read.table(inFile2$datapath, header = T, sep = ',', stringsAsFactors = F)#if doesn't work change to input$file2
-    }    
+    }
+        # calibration <- getData2() %>% 
+    #   #delete first three rows calibration file which are Site_name, Serial_Number, Model 
+    #   select(-c(1:3)) %>% 
+    #   mutate(base.value = (Install_Zero - Cal_Zero) * 
+    #            L_gauge_factor + (First_Temp - Temp) * 
+    #            (((Install_Zero * TempCor_M) + 
+    #                (TempCor_B)) * L_gauge_factor)) %>% 
+    #   mutate(poly.value = -((Poly_GF_A*(Install_Zero^2))+(Poly_GF_B*Install_Zero)))
+
+    
   })
+  
+  #not sure if this should be in reactive or not
+  
+  
+  
+  output$fileUploaded2 <- reactive({
+    return(!is.null(getData2()))
+  })
+  # might need to comment this back in 
+  
+  
   
   observe(print(str(getData2())))
   
-  output$fileUploaded2 <- reactive({ 
-    return(!is.null(getData2()))
-  })
-  
-  outputOptions(output, 'fileUploaded2', suspendWhenHidden = F)
+  outputOptions(output, 'fileUploaded2', suspendWhenHidden = F) #might need this code
   
   
   # get Data input and merge files ------------------------------------------
@@ -175,48 +202,65 @@ server <- function(input, output, session) {
     }
     
     observe(print(str(data.bound)))
-    data.bound$TIMESTAMP <- as.POSIXct(data.bound$TIMESTAMP)
+    
+    df.date <- data.bound %>% 
+      mutate(
+        TIMESTAMP = parse_date_time(TIMESTAMP, orders = c("mdy HM", "ymd HMS"),
+                                    #double check this is right date format 
+                                    tz = input$tz), # try 'US/Mountain' if this doesn't work
+        datetime_utc = date_set_zone(TIMESTAMP, "UTC"), 
+      ) %>% 
+      select(datetime_utc, everything())
     
     
     # equations displacement --------------------------------------------------
     
     
-    data.bound[is.na(data.bound)] <- 0
+    df.date[is.na(df.date)] <- 0
     
-    #this is temperature 
-    lower <- (getData2()$input$cols2 -getData2()$input$cols1) * 
-      getData2()$input$cols3 + (22.76 - 22.8) * 
-      (((getData2()$input$cols1 * 0.000384) + (-0.3482)) * 0.02828)
-    # input$dLower-2631) * 0.02828 + (22.76 - 22.8) * ##TT_Lower = 22.76
-    # (((input$dLower * 0.000384) + (-0.3482)) * 0.02828)
-    upper <- (input$dUpper -2584) * 0.02828 + (28.37 - 22.8) * #TT_Upper = 28.37
-      (((input$dUpper * 0.000384) + (-0.3482)) * 0.02828)
-    control <- (input$dControl -2520) * 0.02869 + (28.37 - 22.8) * #TT_Upper = 28.37
-      (((input$dControl * 0.000384) + (-0.3482)) * 0.02869)
+    df.24 <- df.date %>% 
+      arrange(TIMESTAMP) %>% 
+      mutate(across(where(is.character), as.numeric)) 
     
+    #merge datasets by extending rows of df.dat by rows of calibration 
+    calibration <- getData2() %>% 
+      #delete first three rows calibration file which are Site_name, Serial_Number, Model 
+      select(-c(1:3)) %>% 
+      mutate(base.value = (Install_Zero - Cal_Zero) * 
+               L_gauge_factor + (First_Temp - Temp) * 
+               (((Install_Zero * TempCor_M) + 
+                   (TempCor_B)) * L_gauge_factor)) %>% 
+      mutate(poly.value = -((Poly_GF_A*(Install_Zero^2))+(Poly_GF_B*Install_Zero)))
     
-    data.bound %>%
-      arrange(TIMESTAMP) %>%
-      mutate(across(where(is.character), as.numeric)) %>%
-      mutate(raT.24 = rollapply(T109_C, 96, mean, na.rm = T, align = 'right', partial=TRUE, fill = NA)) %>%
-      mutate(disp.lower = (Digits_Lower -2631) * 0.02828 + (TT_Lower - 22.8) *
-               (((Digits_Lower * 0.000384) + (-0.3482)) * 0.02828)) %>%
-      mutate(norm.dispL = disp.lower- lower) %>%
-      mutate(raL.24 = rollapply(norm.dispL, 96, mean, na.rm = T,align = 'right', partial=TRUE, fill = NA)) %>%
-      mutate(disp.upper = (Digits_Upper -2584) * 0.02828 + (TT_Upper - 22.8) *
-               (((Digits_Upper * 0.000384) + (-0.3482)) * 0.02828)) %>%
-      mutate(norm.dispU = disp.upper- upper) %>%
-      mutate(raU.24 = rollapply(norm.dispU, 96, mean, na.rm = T, align = 'right', partial=TRUE, fill = NA)) %>%
-      mutate(disp.control = (Digits_CTRL -2520) * 0.02869 + (TT_Upper - 22.8) *
-               (((Digits_CTRL * 0.000384) + (-0.3482)) * 0.02869)) %>%
-      mutate(norm.dispC = disp.control- control) %>%
-      mutate(raC.24 = rollapply(norm.dispC, 96, mean, na.rm = T, align = 'right', partial=TRUE, fill = NA)) %>% 
-      mutate(poly.noTL = (0.000000077403*(Digits_Lower^2))+(0.02746*Digits_Lower)+poly.lower) %>% 
-      mutate(raL.noT = rollapply(poly.noTL, 96, mean, na.rm = T,align = 'right', partial=TRUE, fill = NA)) %>%
-      mutate(poly.noTU = (0.000000088762*(Digits_Upper^2))+(0.02727*Digits_Upper)+poly.upper) %>% 
-      mutate(raU.noT = rollapply(poly.noTU, 96, mean, na.rm = T,align = 'right', partial=TRUE, fill = NA)) %>%
-      mutate(poly.noTC = (0.00000010095*(Digits_CTRL^2))+(0.02765*Digits_CTRL)+poly.control) %>% 
-      mutate(raC.noT = rollapply(poly.noTC, 96, mean, na.rm = T,align = 'right', partial=TRUE, fill = NA)) 
+ 
+    results2 <- df.24 %>% 
+      crossing.(calibration) %>% 
+      mutate_rowwise.(disp = (get(`Digits`)- Cal_Zero) * L_gauge_factor 
+                      + (get(`TT`) - Temp) * (((get(`Digits`) * TempCor_M) + 
+                                                 (TempCor_B)) * L_gauge_factor)) %>% 
+      mutate_rowwise.(poly = (Poly_GF_A * (get(`Digits`)^2)) +
+                        (Poly_GF_B * get(`Digits`)) + poly.value) %>%
+      mutate.(norm = disp - base.value) %>% 
+      mutate.(ra = rollapply(norm, 1:n() - findInterval(TIMESTAMP - 24 * 3600, 
+                                                        TIMESTAMP), mean, na.rm = T, align = 'right', partial=TRUE, fill = 0),
+              .by = "Disp") %>% 
+      mutate.(ra_poly = rollapply(poly, 1:n() - findInterval(TIMESTAMP - 24 * 3600,
+                                                             TIMESTAMP), mean, na.rm = T, align = 'right', partial=TRUE, fill = 0),
+              .by = "Disp") %>%
+      pivot_wider.(names_from = c(Digits),
+                   values_from = c(disp, norm, poly, ra, ra_poly))
+    
+    calibration2 <- calibration[ , !(names(calibration) %in% "Digits")]
+    
+    #clean data
+    results3 <- results2 %>% 
+      fill.(starts_with("disp") | starts_with("norm") | starts_with("poly") | starts_with("ra") , .direction = c("downup"), .by = "TIMESTAMP") %>% # | starts_with("ra.RUN")
+      select.(!(names(calibration2))) %>% 
+      distinct.() %>% 
+      mutate.(T_ra = rollapply(gsub(input$temp, "[:punct:]", ""), 1:n() - findInterval(TIMESTAMP - 24 * 3600,
+                                                                              TIMESTAMP),
+                               mean, na.rm = T, align = 'right', partial=TRUE, fill = 0)) %>%
+      rename_at(vars(matches("^ra")), ~ str_remove(., "Digits_"))
     
   })
   
@@ -276,33 +320,31 @@ server <- function(input, output, session) {
     date.character <- date.character()
     
     date.POSIX <- date.character %>% 
-      mutate_if(is.character, as.POSIXct)
+      mutate_if(is.character, as.POSIXct) %>% 
+      pivot_longer.(starts_with("ra"), names_to = 'variables', values_to = "values") %>% 
+      select.(c("TIMESTAMP", "variables", "values", "T_ra")) %>% 
+      #need to add in NAs so don't have 6 traces
+      mutate.(T_ra = ifelse(duplicated(T_ra), NA, T_ra))
     
     
-    plot_ly(date.POSIX) %>% 
-      add_trace(x = ~TIMESTAMP, y = ~raT.24, type = "scatter", 
-                mode = "markers", marker = list(color = "#00AFBB"), yaxis = "y2", name = "Temperature") %>%
-      add_trace(x = ~TIMESTAMP, y = ~raL.24,
-                type = "scatter", mode = "markers", marker = list(color = '#00FF00'),
-                name = "Lower Displacement", textposition = "top center") %>%
-      add_trace(x = ~TIMESTAMP, y = ~raU.24, type = "scatter", 
-                mode = "markers", marker = list(color = "#E7B800"), name = "Upper Displacement") %>%
-      add_trace(x = ~TIMESTAMP, y = ~raC.24, type = "scatter", 
-                mode = "markers", marker = list(color = '#FF0033'), name = "Control") %>%
-      add_trace(x = ~TIMESTAMP, y = ~raL.noT,
-                type = "scatter", mode = "markers", marker = list(color = '#00FF00'),
-                name = "Lower Displacement No Temp", textposition = "top center") %>%
-      add_trace(x = ~TIMESTAMP, y = ~raU.noT, type = "scatter", 
-                mode = "markers", marker = list(color = "#E7B800"), name = "Upper Displacement No Temp") %>%
-      add_trace(x = ~TIMESTAMP, y = ~raC.noT, type = "scatter", 
-                mode = "markers", marker = list(color = '#FF0033'), name = "Control No Temp") %>%
-      layout(
-        legend = list(orientation = 'v'),
-        yaxis2 = list(side = "right", title = "Temperature (deg C)"),
-        title = "Pine Creek Housing Crackmeter Displacement (24 hour rolling average data)",
-        xaxis = list(title="Time"),
-        yaxis = list(overlaying = "y2", title="Displacement (mm)")
-      )
+    plot_so2 <- plot_ly(data = date.POSIX, width = 1000, height = 550,
+                        x = ~TIMESTAMP, y = ~values,
+                        color = ~variables,
+                        type = "scatter", mode = "lines+markers") %>%
+      add_trace(y = ~T_ra,
+                name = "Temperature",
+                line = list(color = "#00AFBB"),
+                showlegend = TRUE,
+                yaxis = "y2") %>%
+      layout(title = 'My plot title',
+             xaxis = list(title = 'Time'),
+             yaxis = list(title = 'Displacement (mm)'),
+             legend = list(orientation = 'v', x = 1.05),
+             yaxis2 = list(overlaying = "y",
+                           side = "right", title = "Temperature (deg C)",
+                           range = range(na.omit(date.POSIX$T_ra)))
+             )
+
   })
   
   
@@ -310,4 +352,3 @@ server <- function(input, output, session) {
 
 # Run the application 
 shinyApp(ui = ui, server = server)
-
