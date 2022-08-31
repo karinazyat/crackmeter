@@ -83,8 +83,12 @@ ui <- bootstrapPage(theme = shinytheme("sandstone"),
                                             conditionalPanel(condition = "output.fileUploaded == true",
                                                              pickerInput(inputId = "temp",
                                                                          label = "Select Temperature Column", 
-                                                                         choices = c("T109_C", "PTemp_C"), 
-                                                                         selected = c("T109_C"))),
+                                                                         # choices = c("T109_C","PTemp_C"),
+                                                                         choices = ""
+                                                                         )),
+                                            conditionalPanel(condition = "output.fileUploaded == true",
+                                                             textInput(inputId = "title", label = "Name Your Plot", 
+                                                                       value = "Pine Creek Housing Crackmeter Displacement (24 hour rolling average data)")),
                                             conditionalPanel(condition = "output.fileUploaded == true",
                                                              daterangepicker("dRange", label = "Select Date Range",
                                                                              options = daterangepickerOptions(
@@ -95,6 +99,7 @@ ui <- bootstrapPage(theme = shinytheme("sandstone"),
                                                                                timePicker24Hour = T
                                                                              ))),
                                             actionButton("action", "Reset!")
+                          
                                             
                                           ), # sidebar panel
                                           
@@ -252,16 +257,16 @@ server <- function(input, output, session) {
     
     calibration2 <- calibration[ , !(names(calibration) %in% "Digits")]
     
+    if(is.null(input$temp)){return()}
+    
     #clean data
     results3 <- results2 %>% 
       fill.(starts_with("disp") | starts_with("norm") | starts_with("poly") | starts_with("ra") , .direction = c("downup"), .by = "TIMESTAMP") %>% # | starts_with("ra.RUN")
       select.(!(names(calibration2))) %>% 
       distinct.() %>% 
-      mutate.(T_ra = rollapply(gsub(input$temp, "[:punct:]", ""), 1:n() - findInterval(TIMESTAMP - 24 * 3600,
-                                                                              TIMESTAMP),
-                               mean, na.rm = T, align = 'right', partial=TRUE, fill = 0)) %>%
       rename_at(vars(matches("^ra")), ~ str_remove(., "Digits_"))
-    
+  # if(is.null(input$temp)){return()}, else(
+    #if(is.null(input$temp)){return()}, else {}
   })
   
   observe(print(str(getData())))
@@ -271,6 +276,19 @@ server <- function(input, output, session) {
   })
   
   outputOptions(output, 'fileUploaded', suspendWhenHidden = F)
+  
+
+# update picker input temp ------------------------------------------------
+
+  observeEvent(input$file1, {
+    getData <- getData()
+    ntemp <- getData %>%
+      select(ends_with("_C"))
+
+    updatePickerInput(session = session, inputId = "temp",
+                      choices = names(ntemp))
+    }, ignoreInit = TRUE)
+
   
   # dates -------------------------------------------------------------------
   
@@ -321,6 +339,9 @@ server <- function(input, output, session) {
     
     date.POSIX <- date.character %>% 
       mutate_if(is.character, as.POSIXct) %>% 
+      mutate.(T_ra = rollapply(get(input$temp), 1:n() - findInterval(TIMESTAMP - 24 * 3600,
+                                                                     TIMESTAMP),
+                               mean, na.rm = T, align = 'right', partial=TRUE, fill = 0)) %>%
       pivot_longer.(starts_with("ra"), names_to = 'variables', values_to = "values") %>% 
       select.(c("TIMESTAMP", "variables", "values", "T_ra")) %>% 
       #need to add in NAs so don't have 6 traces
@@ -330,13 +351,14 @@ server <- function(input, output, session) {
     plot_so2 <- plot_ly(data = date.POSIX, width = 1000, height = 550,
                         x = ~TIMESTAMP, y = ~values,
                         color = ~variables,
-                        type = "scatter", mode = "lines+markers") %>%
+                        type = "scatter", mode = "lines + markers") %>%
       add_trace(y = ~T_ra,
                 name = "Temperature",
-                line = list(color = "#00AFBB"),
+                line = list(color = "#0066FF"),
+                mode = "lines",
                 showlegend = TRUE,
                 yaxis = "y2") %>%
-      layout(title = 'My plot title',
+      layout(title = list(text = input$title, y = 0.98),
              xaxis = list(title = 'Time'),
              yaxis = list(title = 'Displacement (mm)'),
              legend = list(orientation = 'v', x = 1.05),
