@@ -32,6 +32,15 @@ library(clock)
 #changes max upload size to 600 mb
 options(shiny.maxRequestSize=600*1024^2)
 
+# time_var <- c("Station Time" = "TIMESTAMP", 
+#               "Time for Visuals" = "datetime_visuals") #better if this would actually be UTC or specify time zone 
+#could also just get rid of time zone in xaxis
+
+# time zones --------------------------------------------------------------
+
+
+time_zones <- c("US/Alaska", "US/Aleutian", "US/Central", "US/Eastern", "US/Mountain", 
+                "US/Hawaii", "US/Pacific", "US/Samoa", "UTC", "Pacific/Guam", "America/Puerto_Rico")
 
 # Define UI for application that draws a histogram
 ui <- bootstrapPage(theme = shinytheme("sandstone"),
@@ -77,20 +86,19 @@ ui <- bootstrapPage(theme = shinytheme("sandstone"),
                                             
                                             conditionalPanel(condition = "output.fileUploaded == true",
                                                              pickerInput(inputId = "tz",
-                                                                         label = "Local Time Zone", 
-                                                                         choices = c("US/Mountain", "US/Central", "US/Hawaii", "US/Pacific", "US/Alaska", "US/Eastern"), 
-                                                                         selected = c("US/Mountain"))),
-                                            conditionalPanel(condition = "output.fileUploaded == true",
+                                                                         label = "Station Time", 
+                                                                         choices = time_zones, 
+                                                                         selected = c("US/Mountain")),
+                                                             pickerInput(inputId = "time",
+                                                                         label = "Choose Time for Visuals", 
+                                                                         choices = time_zones,
+                                                                         selected = c("US/Mountain")),
                                                              pickerInput(inputId = "temp",
                                                                          label = "Select Temperature Column", 
-                                                                         # choices = c("T109_C","PTemp_C"),
-                                                                         choices = ""
-                                                                         )),
-                                            conditionalPanel(condition = "output.fileUploaded == true",
-                                                             textInput(inputId = "title", label = "Name Your Plot", 
-                                                                       value = "Pine Creek Housing Crackmeter Displacement (24 hour rolling average data)")),
-                                            conditionalPanel(condition = "output.fileUploaded == true",
-                                                             daterangepicker("dRange", label = "Select Date Range",
+                                                                         choices = "" ),
+                                                               textInput(inputId = "title", label = "Name Your Plot", 
+                                                                         value = "Pine Creek Housing Crackmeter Displacement (24 hour rolling average data)"),
+                                                         daterangepicker("dRange", label = "Select Date Range",
                                                                              options = daterangepickerOptions(
                                                                                showDropdowns = T,
                                                                                showCustomRangeLabel = T,
@@ -124,7 +132,32 @@ ui <- bootstrapPage(theme = shinytheme("sandstone"),
                                           
                                         ) #main panel
                                         
-                               ) # tab panel
+                               ),  # tab panel
+                               
+                               tabPanel("Plots",
+
+                                        plotlyOutput("plot1"),
+                                        # plotlyOutput("plot3"),
+
+                                        absolutePanel(id = "controls", class = "panel panel-default",
+                                                      fixed = TRUE,
+                                                      draggable = TRUE, #need to fix
+                                                      #so not everything drags
+                                                      top = 120, left = "auto", right = 30,
+                                                      bottom = "auto", width = 300, height = "auto",
+                                                      style="z-index: 410;",
+                                                      conditionalPanel(condition = "output.fileUploaded == true",
+                                                                       pickerInput(inputId = "temp",
+                                                                                   label = "Select Temperature Column", 
+                                                                                   choices = ""),
+                                                                       pickerInput(inputId = "control",
+                                                                                   label = "Select Control Instrument Column", 
+                                                                                   choices = ""))
+                                                 
+                                        )   #close absolute panel
+                               ) #close tabPanel
+                    
+                               
                     ) # end navbar
 ) #end UI
 
@@ -212,10 +245,10 @@ server <- function(input, output, session) {
       mutate(
         TIMESTAMP = parse_date_time(TIMESTAMP, orders = c("mdy HM", "ymd HMS"),
                                     #double check this is right date format 
-                                    tz = input$tz), # try 'US/Mountain' if this doesn't work
-        datetime_utc = date_set_zone(TIMESTAMP, "UTC"), 
-      ) %>% 
-      select(datetime_utc, everything())
+                                    tz = input$tz)) # try 'US/Mountain' if this doesn't work
+      #   datetime_visuals = date_set_zone(TIMESTAMP, zone = input$time), 
+      # ) %>% 
+      # select(datetime_visuals, everything())
     
     
     # equations displacement --------------------------------------------------
@@ -264,7 +297,7 @@ server <- function(input, output, session) {
       fill.(starts_with("disp") | starts_with("norm") | starts_with("poly") | starts_with("ra") , .direction = c("downup"), .by = "TIMESTAMP") %>% # | starts_with("ra.RUN")
       select.(!(names(calibration2))) %>% 
       distinct.() %>% 
-      rename_at(vars(matches("^ra")), ~ str_remove(., "Digits_"))
+      rename_at(vars(matches("^ra") | matches("^norm") | matches("^poly")), ~ str_remove(., "Digits_"))
   # if(is.null(input$temp)){return()}, else(
     #if(is.null(input$temp)){return()}, else {}
   })
@@ -283,7 +316,7 @@ server <- function(input, output, session) {
   observeEvent(input$file1, {
     getData <- getData()
     ntemp <- getData %>%
-      select(ends_with("_C"))
+      select(ends_with("_C") | starts_with("TT_"))
 
     updatePickerInput(session = session, inputId = "temp",
                       choices = names(ntemp))
@@ -329,7 +362,9 @@ server <- function(input, output, session) {
     )
   })
   
-  
+
+# plot displacement and temp vs. time -------------------------------------
+
   
   output$plot <- renderPlotly({
     
@@ -337,19 +372,20 @@ server <- function(input, output, session) {
     getData <- getData()
     date.character <- date.character()
     
-    date.POSIX <- date.character %>% 
+    date.POSIX <- date.character %>%  #check if i actually need to do this since date.character might just be changed and not getData()?
       mutate_if(is.character, as.POSIXct) %>% 
-      mutate.(T_ra = rollapply(get(input$temp), 1:n() - findInterval(TIMESTAMP - 24 * 3600,
-                                                                     TIMESTAMP),
+      mutate.(T_ra = rollapply(get(input$temp), 1:n() - findInterval(date_set_zone(TIMESTAMP, zone = input$time)
+                                                                     - 24 * 3600,
+                                                                     date_set_zone(TIMESTAMP, zone = input$time)),
                                mean, na.rm = T, align = 'right', partial=TRUE, fill = 0)) %>%
-      pivot_longer.(starts_with("ra"), names_to = 'variables', values_to = "values") %>% 
-      select.(c("TIMESTAMP", "variables", "values", "T_ra")) %>% 
+      pivot_longer.(starts_with("ra") | starts_with("norm") | starts_with("poly"), names_to = 'variables', values_to = "values") %>% 
+      select.(c("TIMESTAMP", "variables", "values", "T_ra")) %>% #"datetime_visuals", 
       #need to add in NAs so don't have 6 traces
       mutate.(T_ra = ifelse(duplicated(T_ra), NA, T_ra))
     
     
-    plot_so2 <- plot_ly(data = date.POSIX, width = 1000, height = 550,
-                        x = ~TIMESTAMP, y = ~values,
+    plot_so <- plot_ly(data = date.POSIX, width = 1000, height = 550,
+                        x = ~date_set_zone(TIMESTAMP, zone = input$time), y = ~values,
                         color = ~variables,
                         type = "scatter", mode = "lines + markers") %>%
       add_trace(y = ~T_ra,
@@ -359,15 +395,44 @@ server <- function(input, output, session) {
                 showlegend = TRUE,
                 yaxis = "y2") %>%
       layout(title = list(text = input$title, y = 0.98),
-             xaxis = list(title = 'Time'),
+             xaxis = list(title = input$time),#names(time_var[which(time_var == input$time)])),
              yaxis = list(title = 'Displacement (mm)'),
              legend = list(orientation = 'v', x = 1.05),
              yaxis2 = list(overlaying = "y",
                            side = "right", title = "Temperature (deg C)",
                            range = range(na.omit(date.POSIX$T_ra)))
              )
-
   })
+    
+
+    observeEvent(input$file1, {
+      getData <- getData()
+      norm_dat <- getData %>%
+        select(starts_with("poly"))
+
+      updatePickerInput(session = session, inputId = "control",
+                        choices = names(norm_dat))
+    }, ignoreInit = TRUE)
+
+# plot poly CTRL norm vs. temp  -------------------------------------------
+    output$plot1 <- renderPlotly({
+
+
+      plot_so1 <- plot_ly(data = getData(), width = 1000, height = 550,
+                          x = ~get(input$temp), y = ~get(input$control),
+                          type = "scatter", mode = "lines + markers") %>%
+        layout(title = list(text = "Control vs. Temperature", y = 0.98),
+               xaxis = list(title = input$temp),#names(time_var[which(time_var == input$time)])),
+               yaxis = list(title = 'Displacement (mm)'), #figure out units-- is it still displacement (mm) ?
+               legend = list(orientation = 'v', x = 1.05)
+        )
+
+
+
+    })
+
+
+
   
   
 }
