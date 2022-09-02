@@ -147,7 +147,7 @@ ui <- bootstrapPage(theme = shinytheme("sandstone"),
                                                       bottom = "auto", width = 300, height = "auto",
                                                       style="z-index: 410;",
                                                       conditionalPanel(condition = "output.fileUploaded == true",
-                                                                       pickerInput(inputId = "temp",
+                                                                       pickerInput(inputId = "temp1",
                                                                                    label = "Select Temperature Column", 
                                                                                    choices = ""),
                                                                        pickerInput(inputId = "control",
@@ -404,6 +404,15 @@ server <- function(input, output, session) {
              )
   })
     
+  
+  observeEvent(input$file1, {
+    getData <- getData()
+    ntemp1 <- getData %>%
+      select(ends_with("_C") | starts_with("TT_"))
+    
+    updatePickerInput(session = session, inputId = "temp1",
+                      choices = names(ntemp1))
+  }, ignoreInit = TRUE)
 
     observeEvent(input$file1, {
       getData <- getData()
@@ -413,21 +422,38 @@ server <- function(input, output, session) {
       updatePickerInput(session = session, inputId = "control",
                         choices = names(norm_dat))
     }, ignoreInit = TRUE)
+    
+    
 
 # plot poly CTRL norm vs. temp  -------------------------------------------
     output$plot1 <- renderPlotly({
+      
+      getData <- getData()
 
+      fit <- lm(get(input$control) ~ get(input$temp1), data = getData)
+      modsum = summary(fit)
+      R2 = summary(fit)$r.squared
+    
+      
+      # lm_eqn <- function(getData){
+      #   fit <- lm(get(input$control) ~ get(input$temp1), data = getData());
+      #   eq <- substitute(italic(get(input$control)) == a + b %.% italic(get(input$temp1))*","~~italic(r)^2~"="~r2, 
+      #                    list(a = format(unname(coef(m)[1]), digits = 2),
+      #                         b = format(unname(coef(m)[2]), digits = 2),
+      #                         r2 = format(summary(m)$r.squared, digits = 3)))
+      #   as.character(as.expression(eq));
+      # }
 
       plot_so1 <- plot_ly(data = getData(), width = 1000, height = 550,
-                          x = ~get(input$temp), y = ~get(input$control),
-                          type = "scatter", mode = "lines + markers") %>%
+                          x = ~get(input$temp1), y = ~get(input$control),
+                          type = "scatter", mode = "markers") %>%
+        
+        add_lines(x = ~get(input$temp1), y = fitted(fit)) %>% 
         layout(title = list(text = "Control vs. Temperature", y = 0.98),
-               xaxis = list(title = input$temp),#names(time_var[which(time_var == input$time)])),
+               xaxis = list(title = input$temp1),#names(time_var[which(time_var == input$time)])),
                yaxis = list(title = 'Displacement (mm)'), #figure out units-- is it still displacement (mm) ?
-               legend = list(orientation = 'v', x = 1.05)
-        )
-
-
+               annotations = list(x = get(input$temp1), y = get(input$control), text = "R2=0.9870744", showarrow = T),
+               showlegend = F)
 
     })
 
