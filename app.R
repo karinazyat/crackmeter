@@ -381,7 +381,10 @@ server <- function(input, output, session) {
       pivot_longer.(starts_with("ra") | starts_with("norm") | starts_with("poly"), names_to = 'variables', values_to = "values") %>% 
       select.(c("TIMESTAMP", "variables", "values", "T_ra")) %>% #"datetime_visuals", 
       #need to add in NAs so don't have 6 traces
-      mutate.(T_ra = ifelse(duplicated(T_ra), NA, T_ra))
+      mutate.(T_ra = ifelse(duplicated(T_ra), NA, T_ra)) %>% 
+      mutate.(variables = str_replace(variables, "norm_", "Normalized ")) %>% 
+      mutate.(variables = str_replace(variables, "poly_", "Polynomial ")) %>% 
+      mutate.(variables = str_replace(variables, "ra_", "24hr "))
     
     
     plot_so <- plot_ly(data = date.POSIX, width = 1000, height = 550,
@@ -389,7 +392,7 @@ server <- function(input, output, session) {
                         color = ~variables,
                         type = "scatter", mode = "lines + markers") %>%
       add_trace(y = ~T_ra,
-                name = "Temperature",
+                name = "Rock 24hr Temperature",
                 line = list(color = "#0066FF"),
                 mode = "lines",
                 showlegend = TRUE,
@@ -431,19 +434,27 @@ server <- function(input, output, session) {
       getData <- getData()
 
       fit <- lm(get(input$control) ~ get(input$temp1), data = getData)
-      modsum = summary(fit)
-      R2 = summary(fit)$r.squared
+      # modsum = summary(fit)
+      # R2 = summary(fit)$r.squared
     
       
-      # lm_eqn <- function(getData){
-      #   fit <- lm(get(input$control) ~ get(input$temp1), data = getData());
-      #   eq <- substitute(italic(get(input$control)) == a + b %.% italic(get(input$temp1))*","~~italic(r)^2~"="~r2, 
-      #                    list(a = format(unname(coef(m)[1]), digits = 2),
-      #                         b = format(unname(coef(m)[2]), digits = 2),
-      #                         r2 = format(summary(m)$r.squared, digits = 3)))
-      #   as.character(as.expression(eq));
-      # }
-
+      lm_eqn <- function(df){
+        g<-as.character("y = a + b x, R2= r2 ");
+        m <- lm(get(input$control) ~ get(input$temp1), data = getData);
+        eq <- g %<>%
+          gsub("a", format(coef(m)[1], digits = 2), .) %>%
+          gsub("b", format(coef(m)[2], digits = 2), .) %>%
+          gsub("r2", format(summary(m)$r.squared, digits = 3), .);                 
+      }
+      
+      # y_eq = max(getData$get(input$control))
+      # x_eq = max(results3$get(input$temp1))
+      
+      vals1 <- getData[, get(input$control)]
+      vals <- getData[, get(input$temp1)]
+      y_eq <- max(vals1)
+      x_eq <- max(vals)
+      
       plot_so1 <- plot_ly(data = getData(), width = 1000, height = 550,
                           x = ~get(input$temp1), y = ~get(input$control),
                           type = "scatter", mode = "markers") %>%
@@ -452,7 +463,7 @@ server <- function(input, output, session) {
         layout(title = list(text = "Control vs. Temperature", y = 0.98),
                xaxis = list(title = input$temp1),#names(time_var[which(time_var == input$time)])),
                yaxis = list(title = 'Displacement (mm)'), #figure out units-- is it still displacement (mm) ?
-               annotations = list(x = get(input$temp1), y = get(input$control), text = "R2=0.9870744", showarrow = T),
+               annotations = list(text = lm_eqn(getData), x = x_eq, y = y_eq, showarrow = F),
                showlegend = F)
 
     })
