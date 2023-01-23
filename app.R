@@ -26,6 +26,15 @@ library(clock)
 # library(runner)
 # library(data.table)
 
+# list.packages = c("shiny", "tidyverse", "lubridate", "DT", "shinythemes", "sperrorest", "paletteer")
+# new.packages = list.packages[!(list.packages %in% installed.packages()[,"Package"])]
+# if(length(new.packages)) install.packages(new.packages)
+
+# loading packages
+# this command will load the previously install packages
+# lapply(list.packages, require, character.only=T)
+# remove(list.packages, new.packages)
+
 
 
 
@@ -411,7 +420,7 @@ server <- function(input, output, session) {
   observeEvent(input$file1, {
     getData <- getData()
     ntemp1 <- getData %>%
-      select(ends_with("_C") | starts_with("TT_"))
+      select(ends_with("_C") | starts_with("TT_") | starts_with("Temp_"))
     
     updatePickerInput(session = session, inputId = "temp1",
                       choices = names(ntemp1))
@@ -442,8 +451,8 @@ server <- function(input, output, session) {
         g<-as.character("y = a + b x, R2= r2 ");
         m <- lm(get(input$control) ~ get(input$temp1), data = getData);
         eq <- g %<>%
-          gsub("a", format(coef(m)[1], digits = 2), .) %>%
-          gsub("b", format(coef(m)[2], digits = 2), .) %>%
+          gsub("a", format(coef(m)[1], digits = 8), .) %>%
+          gsub("b", format(coef(m)[2], digits = 8), .) %>%
           gsub("r2", format(summary(m)$r.squared, digits = 3), .);                 
       }
       
