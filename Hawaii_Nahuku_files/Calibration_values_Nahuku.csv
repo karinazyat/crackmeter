@@ -1,0 +1,3 @@
+﻿Site_name,Serial_Num,Model,Local_name,Digits,TT,Disp,RA,L_gauge_factor,Cal_Zero,Install_Zero,Poly_GF_A,Poly_GF_B,TempCor_M,TempCor_B,Temp ,First_Temp
+HAVO_Nahuku,1924345,4420-1-100MM,100,Digits_100,TT_100,disp_Digits_100,norm_Digits_100,0.023,2796,5106.632,5.60E-08,0.02244,0.000398,0.0864,21.6,16.09
+HAVO_Nahuku,1924283,4420-1-50MM,50,Digits_50,TT_50,disp_Digits_50,norm_Digits_50,0.01112,2989,5174.431,3.03E-08,0.0108,0.000376,0.328,23.5,17.15
