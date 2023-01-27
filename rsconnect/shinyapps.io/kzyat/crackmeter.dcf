@@ -1,0 +1,14 @@
+name: crackmeter
+title: crackmeter
+username:
+account: kzyat
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 8151379
+bundleId: 6782060
+url: https://kzyat.shinyapps.io/crackmeter/
+when: 1674848740.20854
+lastSyncTime: 1674848740.20854
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: crackmeter.R|Rquestion.R
