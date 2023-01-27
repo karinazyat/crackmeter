@@ -1,0 +1,4 @@
+﻿Site_name,Serial_Num,Model,Local_name,Digits,TT,Disp,RA,L_gauge_factor,Cal_Zero,Install_Zero,Poly_GF_A,Poly_GF_B,TempCor_M,TempCor_B,Temp ,First_Temp
+ZION_Pine_Creek,1843716,4420-1X-150MM,lower,Digits_Lower,TT_Lower,disp_Digits_Lower,norm_Digits_Lower,0.02828,2631,5295.223,7.74E-08,0.02746,0.000384,-0.3482,22.8,27.76
+ZION_Pine_Creek,1843717,4420-1X-150MM,upper,Digits_Upper,TT_Upper,disp_Digits_Upper,norm_Digits_Upper,0.0282,2584,4213.226,8.88E-08,0.02727,0.000384,-0.3482,22.8,28.37
+ZION_Pine_Creek,1843718,4420-1X-150MM,control,Digits_CTRL,TT_Upper,disp_Digits_CTRL,norm_Digits_CTRL,0.02869,2520,4234.015,1.01E-07,0.02765,0.000384,-0.3482,22.8,28.37
